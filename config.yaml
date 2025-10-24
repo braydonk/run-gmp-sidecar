@@ -1,0 +1,206 @@
+exporters:
+  googlemanagedprometheus:
+    project: experimental-braydonk
+    metric:
+      add_metric_suffixes: false
+    user_agent: Google-Cloud-Run-GMP-Sidecar/latest; ShortName=run-gmp;ShortVersion=latest
+  debug:
+    verbosity: detailed
+  file:
+    path: out.json
+processors:
+  filter/only_cool_metrics:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+        - my_cool_metric
+  filter/run-gmp-self-metrics_0:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+        - otelcol_process_uptime
+        - otelcol_process_memory_rss
+        - grpc_client_attempt_duration
+        - googlecloudmonitoring_point_count
+  groupbyattrs/application-metrics_3:
+    keys:
+    - namespace
+    - cluster
+  groupbyattrs/run-gmp-self-metrics_5:
+    keys:
+    - namespace
+    - cluster
+  metricstransform/run-gmp-self-metrics_2:
+    transforms:
+    - action: update
+      include: otelcol_process_uptime
+      new_name: agent/uptime
+      operations:
+      - action: toggle_scalar_data_type
+      - action: add_label
+        new_label: version
+        new_value: run-gmp-sidecar@latest
+      - action: aggregate_labels
+        aggregation_type: sum
+        label_set:
+        - version
+    - action: update
+      include: otelcol_process_memory_rss
+      new_name: agent/memory_usage
+      operations:
+      - action: aggregate_labels
+        aggregation_type: sum
+        label_set: []
+    - action: update
+      include: grpc_client_attempt_duration_count
+      new_name: agent/api_request_count
+      operations:
+      - action: update_label
+        label: grpc_client_status
+        new_label: state
+      - action: aggregate_labels
+        aggregation_type: sum
+        label_set:
+        - state
+    - action: update
+      include: googlecloudmonitoring_point_count
+      new_name: agent/monitoring/point_count
+      operations:
+      - action: toggle_scalar_data_type
+      - action: aggregate_labels
+        aggregation_type: sum
+        label_set:
+        - status
+  resourcedetection/application-metrics_0:
+    detectors:
+    - gcp
+    - env
+  resourcedetection/run-gmp-self-metrics_3:
+    detectors:
+    - gcp
+    - env
+  transform/application-metrics_0:
+    metric_statements:
+    - context: resource
+      statements:
+      - set(attributes["faas.id"], "my_cool_instance")
+  transform/application-metrics_1:
+    metric_statements:
+    - context: datapoint
+      statements:
+      - replace_pattern(resource.attributes["service.instance.id"], "^(\\d+)$$", Concat([resource.attributes["faas.id"],
+        "$$1"], ":"))
+  transform/application-metrics_2:
+    metric_statements:
+    - context: datapoint
+      statements:
+      - set(attributes["instanceId"], resource.attributes["faas.id"])
+  transform/application-metrics_4:
+    metric_statements:
+    - context: datapoint
+      statements:
+      - set(resource.attributes["gcp.project.id"], attributes["project_id"]) where
+        attributes["project_id"] != nil
+      - delete_key(attributes, "project_id")
+  transform/run-gmp-self-metrics_1:
+    error_mode: ignore
+    metric_statements:
+    - context: metric
+      statements:
+      - extract_count_metric(true) where name == "grpc_client_attempt_duration"
+  transform/run-gmp-self-metrics_4:
+    metric_statements:
+    - context: datapoint
+      statements:
+      - set(attributes["namespace"], "test_service")
+      - set(attributes["cluster"], "__run__")
+      - replace_pattern(resource.attributes["service.instance.id"], "^(\\d+)$$", Concat([resource.attributes["faas.id"],
+        "$$1"], ":"))
+receivers:
+  prometheus/application-metrics:
+    allow_cumulative_resets: true
+    config:
+      scrape_configs:
+      - job_name: run-gmp-sidecar-0
+        honor_timestamps: false
+        track_timestamps_staleness: false
+        scrape_interval: 20s
+        scrape_timeout: 20s
+        metrics_path: /metrics
+        enable_compression: false
+        follow_redirects: false
+        enable_http2: false
+        relabel_configs:
+        - regex: null
+          target_label: service_name
+          replacement: test_service
+          action: replace
+        - regex: null
+          target_label: revision_name
+          replacement: test_revision
+          action: replace
+        - regex: null
+          target_label: configuration_name
+          replacement: test_configuration
+          action: replace
+        - regex: null
+          target_label: job
+          replacement: run-gmp-sidecar
+          action: replace
+        - regex: null
+          target_label: cluster
+          replacement: __run__
+          action: replace
+        - regex: null
+          target_label: namespace
+          replacement: test_service
+          action: replace
+        - regex: null
+          target_label: instance
+          replacement: "8080"
+          action: replace
+        static_configs:
+        - targets:
+          - localhost:8080
+    use_collector_start_time_fallback: true
+    use_start_time_metric: true
+  prometheus/run-gmp-self-metrics:
+    config:
+      scrape_configs:
+      - job_name: run-gmp-sidecar-self-metrics
+        metric_relabel_configs:
+        - action: replace
+          replacement: "42"
+          source_labels:
+          - __address__
+          target_label: instance
+        scrape_interval: 1m
+        static_configs:
+        - targets:
+          - 0.0.0.0:42
+service:
+  pipelines:
+    metrics/application-metrics:
+      exporters:
+      - file
+      - googlemanagedprometheus
+      processors:
+      - filter/only_cool_metrics
+      - resourcedetection/application-metrics_0
+      - transform/application-metrics_0
+      - transform/application-metrics_1
+      - transform/application-metrics_2
+      - groupbyattrs/application-metrics_3
+      - transform/application-metrics_4
+      receivers:
+      - prometheus/application-metrics
+    # metrics/debug:
+    #   receivers:
+    #   - prometheus/application-metrics
+    #   exporters:
+    #   - debug
+  telemetry:
+    metrics:
+      address: 0.0.0.0:42

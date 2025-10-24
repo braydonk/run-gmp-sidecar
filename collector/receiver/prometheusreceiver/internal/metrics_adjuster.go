@@ -16,6 +16,7 @@ package internal // import "github.com/GoogleCloudPlatform/run-gmp-sidecar/colle
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -148,9 +149,9 @@ func (tsm *timeseriesMap) gc() {
 	tsm.Lock()
 	defer tsm.Unlock()
 	// this shouldn't happen under the current gc() strategy
-	if !tsm.mark {
-		return
-	}
+	// if !tsm.mark {
+	// 	return
+	// }
 	for ts, tsi := range tsm.tsiMap {
 		if !tsi.mark {
 			delete(tsm.tsiMap, ts)
@@ -187,13 +188,17 @@ func (jm *JobsMap) gc() {
 	defer jm.Unlock()
 	// once the structure is locked, confirm that gc() is still necessary
 	if time.Since(jm.lastGC) > jm.gcInterval {
-		for sig, tsm := range jm.jobsMap {
+		for _, tsm := range jm.jobsMap {
 			tsm.RLock()
 			tsmNotMarked := !tsm.mark
 			// take a read lock here, no need to get a full lock as we have a lock on the JobsMap
 			tsm.RUnlock()
+			fmt.Println("----")
+			fmt.Println("I AM DOING THE GC NOW")
+			fmt.Println("----")
 			if tsmNotMarked {
-				delete(jm.jobsMap, sig)
+				// delete(jm.jobsMap, sig)
+				tsm.gc()
 			} else {
 				// a full lock will be obtained in here, if required.
 				tsm.gc()
@@ -214,25 +219,31 @@ func (jm *JobsMap) maybeGC() {
 
 func (jm *JobsMap) get(job, instance string) *timeseriesMap {
 	sig := job + ":" + instance
-	// a read locke is taken here as we will not need to modify jobsMap if the target timeseriesMap is available.
+	var tsm *timeseriesMap
+	var ok bool
+
+	// A read lock is taken here as we will not need to modify jobsMap if the target timeseriesMap is available.
 	jm.RLock()
-	tsm, ok := jm.jobsMap[sig]
+	tsm, ok = jm.jobsMap[sig]
 	jm.RUnlock()
 	defer jm.maybeGC()
 	if ok {
-		return tsm
+		goto returnTsm
 	}
 	jm.Lock()
 	defer jm.Unlock()
 	// Now that we've got an exclusive lock, check once more to ensure an entry wasn't created in the interim
 	// and then create a new timeseriesMap if required.
-	tsm2, ok2 := jm.jobsMap[sig]
-	if ok2 {
-		return tsm2
+	tsm, ok = jm.jobsMap[sig]
+	if ok {
+		goto returnTsm
 	}
-	tsm2 = newTimeseriesMap()
-	jm.jobsMap[sig] = tsm2
-	return tsm2
+	tsm = newTimeseriesMap()
+	jm.jobsMap[sig] = tsm
+
+returnTsm:
+	// tsm.Lock()
+	return tsm
 }
 
 type MetricsAdjuster interface {
@@ -378,6 +389,9 @@ func (a *initialPointAdjuster) adjustMetricSum(tsm *timeseriesMap, current pmetr
 
 		tsi, found := tsm.get(current, currentSum.Attributes())
 		if !found {
+			fmt.Println("---")
+			fmt.Println("we were not found in the tsm")
+			fmt.Println("---")
 			// initialize everything.
 			tsi.number.startTime = currentSum.StartTimestamp()
 			tsi.number.previousValue = currentSum.DoubleValue()

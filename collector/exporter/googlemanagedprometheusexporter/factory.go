@@ -51,6 +51,7 @@ func createMetricsExporter(
 	params exporter.Settings,
 	cfg component.Config) (exporter.Metrics, error) {
 	eCfg := cfg.(*Config)
+
 	collectorConfig := eCfg.GMPConfig.toCollectorConfig()
 	collectorConfig.MetricConfig.CumulativeNormalization = false
 	mExp, err := collector.NewGoogleCloudMetricsExporter(ctx, collectorConfig, params.TelemetrySettings.Logger, params.TelemetrySettings.MeterProvider, params.BuildInfo.Version, eCfg.TimeoutSettings.Timeout)
