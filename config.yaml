@@ -8,6 +8,7 @@ exporters:
     verbosity: detailed
   file:
     path: out.json
+  nop:
 processors:
   filter/only_cool_metrics:
     metrics:
@@ -126,8 +127,8 @@ receivers:
       - job_name: run-gmp-sidecar-0
         honor_timestamps: false
         track_timestamps_staleness: false
-        scrape_interval: 20s
-        scrape_timeout: 20s
+        scrape_interval: 10s
+        scrape_timeout: 10s
         metrics_path: /metrics
         enable_compression: false
         follow_redirects: false
@@ -184,8 +185,9 @@ service:
   pipelines:
     metrics/application-metrics:
       exporters:
-      - file
-      - googlemanagedprometheus
+      - nop
+      # - file
+      # - googlemanagedprometheus
       processors:
       - filter/only_cool_metrics
       - resourcedetection/application-metrics_0

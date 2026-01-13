@@ -121,6 +121,7 @@ func (tsm *timeseriesMap) get(metric pmetric.Metric, kv pcommon.Map) (*timeserie
 		key.aggTemporality = metric.Histogram().AggregationTemporality()
 	}
 
+	fmt.Println("marking the tsm!")
 	tsm.mark = true
 	tsi, ok := tsm.tsiMap[key]
 	if !ok {
@@ -154,11 +155,14 @@ func (tsm *timeseriesMap) gc() {
 	// }
 	for ts, tsi := range tsm.tsiMap {
 		if !tsi.mark {
+			// fmt.Printf("deleting ts %s\n", ts.name)
 			delete(tsm.tsiMap, ts)
 		} else {
+			// fmt.Printf("ts %s was marked\n", ts.name)
 			tsi.mark = false
 		}
 	}
+	// fmt.Println("tsm unmarked!")
 	tsm.mark = false
 }
 
@@ -188,19 +192,19 @@ func (jm *JobsMap) gc() {
 	defer jm.Unlock()
 	// once the structure is locked, confirm that gc() is still necessary
 	if time.Since(jm.lastGC) > jm.gcInterval {
-		for _, tsm := range jm.jobsMap {
+		for sig, tsm := range jm.jobsMap {
 			tsm.RLock()
+			fmt.Printf("GC LOCK HAPPENING %d\n", time.Now().UnixMilli())
 			tsmNotMarked := !tsm.mark
 			// take a read lock here, no need to get a full lock as we have a lock on the JobsMap
 			tsm.RUnlock()
-			fmt.Println("----")
-			fmt.Println("I AM DOING THE GC NOW")
-			fmt.Println("----")
 			if tsmNotMarked {
-				// delete(jm.jobsMap, sig)
-				tsm.gc()
+				// fmt.Println("tsm was not marked!")
+				delete(jm.jobsMap, sig)
+				// tsm.gc()
 			} else {
 				// a full lock will be obtained in here, if required.
+				// fmt.Println("tsm was marked!")
 				tsm.gc()
 			}
 		}
@@ -242,7 +246,7 @@ func (jm *JobsMap) get(job, instance string) *timeseriesMap {
 	jm.jobsMap[sig] = tsm
 
 returnTsm:
-	// tsm.Lock()
+	tsm.Lock()
 	return tsm
 }
 
@@ -290,9 +294,11 @@ func (a *initialPointAdjuster) AdjustMetrics(metrics pmetric.Metrics) error {
 	}
 	tsm := a.jobsMap.get(job.Str(), instance.Str())
 
+	time.Sleep(time.Second * 2)
 	// The lock on the relevant timeseriesMap is held throughout the adjustment process to ensure that
 	// nothing else can modify the data used for adjustment.
-	tsm.Lock()
+	// tsm.Lock()
+	fmt.Printf("ADJUSTMENT LOCK HAPPENING %d\n", time.Now().UnixMilli())
 	defer tsm.Unlock()
 	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
 		rm := metrics.ResourceMetrics().At(i)
@@ -389,9 +395,9 @@ func (a *initialPointAdjuster) adjustMetricSum(tsm *timeseriesMap, current pmetr
 
 		tsi, found := tsm.get(current, currentSum.Attributes())
 		if !found {
-			fmt.Println("---")
-			fmt.Println("we were not found in the tsm")
-			fmt.Println("---")
+			// fmt.Println("---")
+			// fmt.Println("we were not found in the tsm")
+			// fmt.Println("---")
 			// initialize everything.
 			tsi.number.startTime = currentSum.StartTimestamp()
 			tsi.number.previousValue = currentSum.DoubleValue()

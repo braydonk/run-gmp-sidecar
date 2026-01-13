@@ -16,6 +16,7 @@ package internal // import "github.com/GoogleCloudPlatform/run-gmp-sidecar/colle
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
@@ -128,6 +129,9 @@ func (stma *startTimeMetricAdjuster) getStartTime(metrics pmetric.Metrics) (floa
 			for k := 0; k < ilm.Metrics().Len(); k++ {
 				metric := ilm.Metrics().At(k)
 				if stma.matchStartTimeMetric(metric.Name()) {
+					fmt.Println("---")
+					fmt.Println("found the start time metrics!")
+					fmt.Println("---")
 					switch metric.Type() {
 					case pmetric.MetricTypeGauge:
 						if metric.Gauge().DataPoints().Len() == 0 {

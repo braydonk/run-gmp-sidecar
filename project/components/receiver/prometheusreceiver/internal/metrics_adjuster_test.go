@@ -15,6 +15,7 @@
 package internal
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -570,22 +571,27 @@ func TestTsGC(t *testing.T) {
 		},
 	}
 
-	ma := NewInitialPointAdjuster(zap.NewNop(), time.Minute, true)
+	ma := NewInitialPointAdjuster(zap.NewNop(), 0, true)
 
 	// run round 1
 	runScript(t, ma, "job", "0", script1)
+	fmt.Println("---")
 	// gc the tsmap, unmarking all entries
-	tsm := ma.(*initialPointAdjuster).jobsMap.get("job", "0")
-	tsm.Unlock()
-	tsm.gc()
+	// tsm := ma.(*initialPointAdjuster).jobsMap.get("job", "0")
+	// tsm.Unlock()
+	// tsm.gc()
 	// run round 2 - update metrics first timeseries only
 	runScript(t, ma, "job", "0", script2)
+	fmt.Println("---")
 	// gc the tsmap, collecting umarked entries
-	tsm = ma.(*initialPointAdjuster).jobsMap.get("job", "0")
-	tsm.Unlock()
-	tsm.gc()
+	// tsm = ma.(*initialPointAdjuster).jobsMap.get("job", "0")
+	// tsm.Unlock()
+	// tsm.gc()
 	// run round 3 - verify that metrics second timeseries have been gc'd
 	runScript(t, ma, "job", "0", script3)
+	fmt.Println("---")
+
+	t.FailNow()
 }
 
 func TestJobGC(t *testing.T) {
